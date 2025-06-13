@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -9,6 +9,8 @@ import {
   Collapse,
   IconButton,
   Typography,
+  LinearProgress,
+  Alert,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -19,6 +21,8 @@ import {
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { useStore } from '../store';
+import RepoInput from './RepoInput';
+import { useQuery } from 'react-query';
 
 interface FileNode {
   id: string;
@@ -30,7 +34,38 @@ interface FileNode {
 const FileTreePanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [repoId, setRepoId] = useState<string | null>(null);
   const setSelectedNode = useStore((state) => state.setSelectedNode);
+
+  // Query for repository structure
+  const { data: repoStructure, isLoading, error: repoError } = useQuery(
+    ['repo', repoId],
+    async () => {
+      if (!repoId) return null;
+      const response = await fetch(`/api/repo/${repoId}/graph?level=1`);
+      if (!response.ok) throw new Error('Failed to fetch repository structure');
+      return response.json();
+    },
+    {
+      enabled: !!repoId,
+      refetchInterval: (data) => (data?.status === 'processing' ? 1000 : false),
+    }
+  );
+
+  // Query for analysis status
+  const { data: analysisStatus } = useQuery(
+    ['repo-status', repoId],
+    async () => {
+      if (!repoId) return null;
+      const response = await fetch(`/api/repo/${repoId}/status`);
+      if (!response.ok) throw new Error('Failed to fetch analysis status');
+      return response.json();
+    },
+    {
+      enabled: !!repoId,
+      refetchInterval: (data) => (data?.status === 'processing' ? 1000 : false),
+    }
+  );
 
   const handleFolderClick = (folderId: string) => {
     setExpandedFolders((prev) => {
@@ -53,6 +88,8 @@ const FileTreePanel: React.FC = () => {
   };
 
   const renderNode = (node: FileNode, level: number = 0) => {
+    if (!node || !node.id) return null;
+
     const isExpanded = expandedFolders.has(node.id);
     const isFolder = node.type === 'folder';
 
@@ -92,33 +129,37 @@ const FileTreePanel: React.FC = () => {
     );
   };
 
-  // TODO: Replace with actual repository data
-  const mockData: FileNode = {
-    id: 'root',
-    name: 'Repository',
-    type: 'folder',
-    children: [
-      {
-        id: 'src',
-        name: 'src',
-        type: 'folder',
-        children: [
-          {
-            id: 'src/main.ts',
-            name: 'main.ts',
-            type: 'file',
-          },
-        ],
-      },
-    ],
-  };
-
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <RepoInput onAnalysisComplete={setRepoId} />
+      
+      {isLoading && (
+        <Box sx={{ p: 2 }}>
+          <LinearProgress />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+            Loading repository structure...
+          </Typography>
+        </Box>
+      )}
+
+      {repoError instanceof Error && (
+        <Box sx={{ p: 2 }}>
+          <Alert severity="error">
+            Failed to load repository structure: {repoError.message}
+          </Alert>
+        </Box>
+      )}
+
+      {analysisStatus?.status === 'processing' && (
+        <Box sx={{ p: 2 }}>
+          <LinearProgress variant="determinate" value={analysisStatus.progress * 100} />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+            {analysisStatus.message}
+          </Typography>
+        </Box>
+      )}
+
       <Box sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          Repository Explorer
-        </Typography>
         <TextField
           fullWidth
           variant="outlined"
@@ -131,8 +172,17 @@ const FileTreePanel: React.FC = () => {
           size="small"
         />
       </Box>
+
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <List>{renderNode(mockData)}</List>
+        {repoStructure?.nodes && repoStructure.nodes.length > 0 ? (
+          <List>{renderNode(repoStructure.nodes[0])}</List>
+        ) : (
+          <Box sx={{ p: 2, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              Enter a GitHub repository URL to begin
+            </Typography>
+          </Box>
+        )}
       </Box>
     </Box>
   );
