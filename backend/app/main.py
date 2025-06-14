@@ -76,6 +76,7 @@ async def analyze_repo(request: RepoRequest, background_tasks: BackgroundTasks):
 
 async def process_repo(repo_id: str, url: str, branch: str):
     """Process repository in background."""
+    repo_path = None
     try:
         # Clone repository
         repo_path = await repo_analyzer.clone_repository(url, branch)
