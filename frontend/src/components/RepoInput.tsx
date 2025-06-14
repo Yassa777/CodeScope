@@ -13,41 +13,36 @@ interface RepoInputProps {
   onAnalysisComplete: (repoId: string) => void;
 }
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 const RepoInput: React.FC<RepoInputProps> = ({ onAnalysisComplete }) => {
   const [repoUrl, setRepoUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { mutate: analyzeRepo, isLoading } = useMutation(
-    async (url: string) => {
-      const response = await fetch('/api/repo', {
+  const mutation = useMutation({
+    mutationFn: async (url: string) => {
+      const response = await fetch(`${API_BASE_URL}/repo`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url }),
       });
-
+      
       if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(errorData || 'Failed to analyze repository');
+        const error = await response.text();
+        throw new Error(error || 'Failed to analyze repository');
       }
-
-      const data = await response.json();
-      return data;
+      
+      return response.json();
     },
-    {
-      onSuccess: (data) => {
-        if (data.id) {
-          onAnalysisComplete(data.id);
-        } else {
-          setError('Invalid response from server');
-        }
-      },
-      onError: (error: Error) => {
-        setError(error.message);
-      },
-    }
-  );
+    onSuccess: (data) => {
+      onAnalysisComplete(data.id);
+    },
+    onError: (error: Error) => {
+      setError(error.message);
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +55,7 @@ const RepoInput: React.FC<RepoInputProps> = ({ onAnalysisComplete }) => {
       return;
     }
 
-    analyzeRepo(repoUrl);
+    mutation.mutate(repoUrl);
   };
 
   return (
@@ -83,17 +78,17 @@ const RepoInput: React.FC<RepoInputProps> = ({ onAnalysisComplete }) => {
           placeholder="Enter GitHub repository URL"
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
-          disabled={isLoading}
+          disabled={mutation.isLoading}
           error={!!error}
           helperText={error}
         />
         <Button
           type="submit"
           variant="contained"
-          disabled={isLoading || !repoUrl}
+          disabled={mutation.isLoading || !repoUrl}
           sx={{ minWidth: 100 }}
         >
-          {isLoading ? (
+          {mutation.isLoading ? (
             <CircularProgress size={24} color="inherit" />
           ) : (
             'Analyze'
