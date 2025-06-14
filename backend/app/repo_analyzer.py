@@ -1,11 +1,12 @@
 import os
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import git
 from git import Repo
 import tempfile
 import shutil
+import asyncio
 
 class RepoAnalyzer:
     def __init__(self, cache_dir: Optional[str] = None):
@@ -17,6 +18,18 @@ class RepoAnalyzer:
         """
         self.cache_dir = cache_dir or os.path.join(tempfile.gettempdir(), "halos_cache")
         os.makedirs(self.cache_dir, exist_ok=True)
+
+    def get_repo_id(self, repo_url: str) -> str:
+        """
+        Generate a unique ID for a repository.
+        
+        Args:
+            repo_url: URL of the repository
+            
+        Returns:
+            Unique ID string
+        """
+        return hashlib.sha256(repo_url.encode()).hexdigest()
 
     def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA-256 hash of a file's contents."""
@@ -31,16 +44,16 @@ class RepoAnalyzer:
         repo_name = repo_url.split("/")[-1].replace(".git", "")
         return Path(self.cache_dir) / repo_name
 
-    async def clone_repository(self, repo_url: str, branch: str = "main") -> Tuple[str, Path]:
+    async def clone_repository(self, repo_url: str, branch: str = "main") -> Path:
         """
-        Clone a repository and return its ID and local path.
+        Clone a repository and return its local path.
         
         Args:
             repo_url: URL of the repository to clone
             branch: Branch to checkout
             
         Returns:
-            Tuple of (repo_id, repo_path)
+            Path to the cloned repository
         """
         repo_dir = self._get_repo_dir(repo_url)
         
@@ -48,18 +61,15 @@ class RepoAnalyzer:
             # Repository already exists, update it
             repo = Repo(repo_dir)
             origin = repo.remotes.origin
-            origin.pull()
+            await asyncio.to_thread(origin.pull)
         else:
             # Clone the repository
-            repo = Repo.clone_from(repo_url, repo_dir)
+            repo = await asyncio.to_thread(Repo.clone_from, repo_url, repo_dir)
         
         # Checkout the specified branch
-        repo.git.checkout(branch)
+        await asyncio.to_thread(repo.git.checkout, branch)
         
-        # Generate a unique ID for this repository
-        repo_id = hashlib.sha256(f"{repo_url}:{branch}".encode()).hexdigest()
-        
-        return repo_id, repo_dir
+        return repo_dir
 
     def get_source_files(self, repo_path: Path) -> List[Path]:
         """
@@ -82,26 +92,24 @@ class RepoAnalyzer:
         
         return source_files
 
-    def analyze_repository(self, repo_url: str, branch: str = "main") -> Dict[str, Any]:
+    def analyze_repository(self, repo_path: Path) -> Dict[str, Any]:
         """
         Analyze a repository and return its structure.
         
         Args:
-            repo_url: URL of the repository to analyze
-            branch: Branch to analyze
+            repo_path: Path to the repository
             
         Returns:
             Dictionary containing repository analysis results
         """
-        repo_id, repo_path = self.clone_repository(repo_url, branch)
         source_files = self.get_source_files(repo_path)
         
         # Create initial folder structure
         structure = {
-            "id": repo_id,
+            "id": self.get_repo_id(str(repo_path)),
             "name": repo_path.name,
-            "url": repo_url,
-            "branch": branch,
+            "url": str(repo_path),
+            "branch": "main",  # TODO: Get actual branch
             "folders": {},
             "files": []
         }

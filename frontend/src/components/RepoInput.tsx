@@ -28,15 +28,20 @@ const RepoInput: React.FC<RepoInputProps> = ({ onAnalysisComplete }) => {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to analyze repository');
+        const errorData = await response.text();
+        throw new Error(errorData || 'Failed to analyze repository');
       }
 
-      return response.json();
+      const data = await response.json();
+      return data;
     },
     {
       onSuccess: (data) => {
-        onAnalysisComplete(data.job_id);
+        if (data.id) {
+          onAnalysisComplete(data.id);
+        } else {
+          setError('Invalid response from server');
+        }
       },
       onError: (error: Error) => {
         setError(error.message);

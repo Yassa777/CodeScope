@@ -31,6 +31,36 @@ interface FileNode {
   children?: FileNode[];
 }
 
+interface FolderData {
+  folders: Record<string, FolderData>;
+  files: Array<{
+    path: string;
+    hash: string;
+    size: number;
+  }>;
+}
+
+interface RepoStructure {
+  id: string;
+  name: string;
+  url: string;
+  branch: string;
+  folders: Record<string, FolderData>;
+  files: Array<{
+    path: string;
+    hash: string;
+    size: number;
+  }>;
+}
+
+interface AnalysisStatus {
+  status: 'processing' | 'completed' | 'error';
+  progress: number;
+  error: string | null;
+  structure?: RepoStructure;
+  graph?: any;
+}
+
 const FileTreePanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -38,32 +68,20 @@ const FileTreePanel: React.FC = () => {
   const setSelectedNode = useStore((state) => state.setSelectedNode);
 
   // Query for repository structure
-  const { data: repoStructure, isLoading, error: repoError } = useQuery(
+  const { data: repoStructure, isLoading, error: repoError } = useQuery<AnalysisStatus>(
     ['repo', repoId],
     async () => {
       if (!repoId) return null;
-      const response = await fetch(`/api/repo/${repoId}/graph?level=1`);
-      if (!response.ok) throw new Error('Failed to fetch repository structure');
+      const response = await fetch(`/api/repo/${repoId}`);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || 'Failed to fetch repository structure');
+      }
       return response.json();
     },
     {
       enabled: !!repoId,
-      refetchInterval: (data) => (data?.status === 'processing' ? 1000 : false),
-    }
-  );
-
-  // Query for analysis status
-  const { data: analysisStatus } = useQuery(
-    ['repo-status', repoId],
-    async () => {
-      if (!repoId) return null;
-      const response = await fetch(`/api/repo/${repoId}/status`);
-      if (!response.ok) throw new Error('Failed to fetch analysis status');
-      return response.json();
-    },
-    {
-      enabled: !!repoId,
-      refetchInterval: (data) => (data?.status === 'processing' ? 1000 : false),
+      refetchInterval: (data) => (data?.status === 'processing' ? 2000 : false),
     }
   );
 
@@ -150,12 +168,21 @@ const FileTreePanel: React.FC = () => {
         </Box>
       )}
 
-      {analysisStatus?.status === 'processing' && (
+      {repoStructure?.status === 'processing' && (
         <Box sx={{ p: 2 }}>
-          <LinearProgress variant="determinate" value={analysisStatus.progress * 100} />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-            {analysisStatus.message}
-          </Typography>
+          <LinearProgress 
+            variant="determinate" 
+            value={repoStructure.progress} 
+            sx={{ height: 8, borderRadius: 4 }}
+          />
+          <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
+              Analyzing repository...
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {Math.round(repoStructure.progress)}%
+            </Typography>
+          </Box>
         </Box>
       )}
 
@@ -174,8 +201,22 @@ const FileTreePanel: React.FC = () => {
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        {repoStructure?.nodes && repoStructure.nodes.length > 0 ? (
-          <List>{renderNode(repoStructure.nodes[0])}</List>
+        {repoStructure?.structure?.folders ? (
+          <List>
+            {Object.entries(repoStructure.structure.folders).map(([name, data]) => (
+              renderNode({
+                id: name,
+                name: name,
+                type: 'folder',
+                children: Object.entries(data.folders).map(([childName, childData]) => ({
+                  id: `${name}/${childName}`,
+                  name: childName,
+                  type: 'folder',
+                  children: []
+                }))
+              })
+            ))}
+          </List>
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
