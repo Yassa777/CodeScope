@@ -30,6 +30,10 @@ interface FileNode {
   name: string;
   type: 'folder' | 'file';
   children?: FileNode[];
+  data?: {
+    size: number;
+    hash: string;
+  };
 }
 
 interface FolderData {
@@ -65,10 +69,25 @@ interface AnalysisStatus {
   completed_at?: string;
 }
 
+interface TreeNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: TreeNode[];
+  data?: {
+    size: number;
+    hash: string;
+  };
+}
+
+interface FileTreePanelProps {
+  onRepoIdChange: (repoId: string | null) => void;
+}
+
 const API_BASE_URL = 'http://localhost:8000/api';
 const WS_BASE_URL = 'ws://localhost:8000/ws';
 
-const FileTreePanel: React.FC = () => {
+const FileTreePanel: React.FC<FileTreePanelProps> = ({ onRepoIdChange }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [repoId, setRepoId] = useState<string | null>(null);
@@ -80,6 +99,11 @@ const FileTreePanel: React.FC = () => {
   const reconnectAttemptsRef = useRef(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
   const setSelectedNode = useStore((state) => state.setSelectedNode);
+
+  // Update parent component when repoId changes
+  useEffect(() => {
+    onRepoIdChange(repoId);
+  }, [repoId, onRepoIdChange]);
 
   // Set up WebSocket connection
   useEffect(() => {
@@ -171,7 +195,9 @@ const FileTreePanel: React.FC = () => {
         const error = await response.text();
         throw new Error(error || 'Failed to fetch repository structure');
       }
-      return response.json();
+      const data = await response.json();
+      console.log('Received repository structure:', data);
+      return data;
     },
     {
       enabled: !!repoId,
@@ -192,6 +218,7 @@ const FileTreePanel: React.FC = () => {
   // Update analysis status from query data if available
   useEffect(() => {
     if (repoStructure) {
+      console.log('Setting analysis status with structure:', repoStructure);
       setAnalysisStatus(repoStructure);
     }
   }, [repoStructure]);
@@ -240,7 +267,10 @@ const FileTreePanel: React.FC = () => {
               <FileIcon />
             )}
           </ListItemIcon>
-          <ListItemText primary={node.name} />
+          <ListItemText 
+            primary={node.name}
+            secondary={!isFolder && node.data?.size ? formatFileSize(node.data.size) : undefined}
+          />
           {isFolder && (
             <IconButton size="small">
               {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -256,6 +286,84 @@ const FileTreePanel: React.FC = () => {
         )}
       </React.Fragment>
     );
+  };
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+  };
+
+  // Convert repository structure to tree nodes
+  const convertToTreeNodes = (structure: RepoStructure | undefined): TreeNode[] => {
+    if (!structure) {
+      return [];
+    }
+    const allFiles = structure.files || [];
+
+    // Recursive function to process a folder
+    const processFolder = (folderData: Record<string, FolderData>, parentPath: string): TreeNode[] => {
+      return Object.entries(folderData).map(([name, data]) => {
+        const currentPath = parentPath ? `${parentPath}/${name}` : name;
+
+        // Get files that are direct children of this folder
+        const childFiles = allFiles
+          .filter(file => {
+            const filePath = file.path;
+            const lastSlashIndex = filePath.lastIndexOf('/');
+            const parentDir = lastSlashIndex === -1 ? '' : filePath.substring(0, lastSlashIndex);
+            return parentDir === currentPath;
+          })
+          .map(file => ({
+            id: file.path,
+            name: file.path.split('/').pop() || file.path,
+            type: 'file' as const,
+            data: { size: file.size, hash: file.hash },
+          }));
+
+        // Recursively process subfolders
+        const childFolders = processFolder(data.folders, currentPath);
+
+        return {
+          id: currentPath,
+          name: name,
+          type: 'folder' as const,
+          children: [...childFolders, ...childFiles].sort((a, b) => {
+            // Sort so folders come before files
+            if (a.type === 'folder' && b.type === 'file') return -1;
+            if (a.type === 'file' && b.type === 'folder') return 1;
+            return a.name.localeCompare(b.name);
+          }),
+        };
+      });
+    };
+
+    // Process root-level folders
+    const rootFolders = processFolder(structure.folders, '');
+
+    // Process root-level files
+    const rootFiles = allFiles
+      .filter(file => !file.path.includes('/'))
+      .map(file => ({
+        id: file.path,
+        name: file.path.split('/').pop() || file.path,
+        type: 'file' as const,
+        data: { size: file.size, hash: file.hash },
+      }));
+
+    return [...rootFolders, ...rootFiles].sort((a, b) => {
+        if (a.type === 'folder' && b.type === 'file') return -1;
+        if (a.type === 'file' && b.type === 'folder') return 1;
+        return a.name.localeCompare(b.name);
+    });
   };
 
   return (
@@ -338,21 +446,9 @@ const FileTreePanel: React.FC = () => {
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        {analysisStatus?.structure?.folders ? (
+        {analysisStatus?.structure ? (
           <List>
-            {Object.entries(analysisStatus.structure.folders).map(([name, data]) => (
-              renderNode({
-                id: name,
-                name: name,
-                type: 'folder',
-                children: Object.entries(data.folders).map(([childName, childData]) => ({
-                  id: `${name}/${childName}`,
-                  name: childName,
-                  type: 'folder',
-                  children: []
-                }))
-              })
-            ))}
+            {convertToTreeNodes(analysisStatus.structure).map(node => renderNode(node))}
           </List>
         ) : (
           <Box sx={{ p: 2, textAlign: 'center' }}>

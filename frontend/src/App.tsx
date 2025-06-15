@@ -4,6 +4,7 @@ import FileTreePanel from './components/FileTreePanel';
 import GraphPanel from './components/GraphPanel';
 import InspectorPanel from './components/InspectorPanel';
 import { useStore } from './store';
+import { useState } from 'react';
 
 const theme = createTheme({
   palette: {
@@ -26,6 +27,7 @@ const queryClient = new QueryClient();
 function App() {
   const selectedNode = useStore((state) => state.selectedNode);
   const graphLevel = useStore((state) => state.graphLevel);
+  const [repoId, setRepoId] = useState<string | null>(null);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -49,7 +51,7 @@ function App() {
               flexDirection: 'column',
             }}
           >
-            <FileTreePanel />
+            <FileTreePanel onRepoIdChange={setRepoId} />
           </Box>
 
           {/* Center Panel - Graph */}
@@ -60,7 +62,7 @@ function App() {
               backgroundColor: 'background.default',
             }}
           >
-            <GraphPanel level={graphLevel} />
+            <GraphPanel level={graphLevel} repoId={repoId} />
           </Box>
 
           {/* Right Panel - Inspector */}

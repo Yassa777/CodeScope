@@ -164,7 +164,7 @@ class RepoAnalyzer:
         """
         source_extensions = {
             ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".cpp", ".c", ".h",
-            ".hpp", ".cs", ".rb", ".php", ".swift", ".kt", ".rs"
+            ".hpp", ".cs", ".rb", ".php", ".swift", ".kt", ".rs", ".css"
         }
         
         # Use git ls-files for faster file listing
@@ -206,6 +206,7 @@ class RepoAnalyzer:
         
         # Get source files
         source_files = self.get_source_files(repo_path)
+        print(f"Found {len(source_files)} source files")
         
         # Create initial folder structure
         structure = {
@@ -231,17 +232,43 @@ class RepoAnalyzer:
         # Process files concurrently
         tasks = [process_file(f) for f in source_files]
         file_results = await asyncio.gather(*tasks)
+        print(f"Processed {len(file_results)} files")
         
-        # Add files to structure
-        structure["files"].extend(file_results)
-        
-        # Update folder structure
-        for file_info in file_results:
-            current = structure["folders"]
-            for part in Path(file_info["path"]).parts[:-1]:
+        # Helper function to get or create folder
+        def get_or_create_folder(parent: dict, folder_path: str) -> dict:
+            if not folder_path:
+                return parent
+            parts = folder_path.split('/')
+            current = parent
+            for part in parts:
                 if part not in current:
                     current[part] = {"folders": {}, "files": []}
-                current = current[part]["folders"]
+                current = current[part]
+            return current
+        
+        # Add files to structure
+        for file_info in file_results:
+            path = Path(file_info["path"])
+            print(f"\nProcessing file: {path}")
+            
+            if len(path.parts) == 1:
+                # Root file
+                print(f"Adding root file: {path.name}")
+                structure["files"].append(file_info)
+            else:
+                # File in a folder
+                folder_path = str(path.parent)
+                file_name = path.name
+                
+                # Get the parent folder
+                parent_folder = get_or_create_folder(structure["folders"], folder_path)
+                
+                # Add file to the correct folder
+                print(f"Adding file {file_name} to folder {folder_path}")
+                parent_folder["files"].append(file_info)
+        
+        print("\nFinal structure:")
+        print(json.dumps(structure, indent=2))
         
         # Create graph data
         graph = {
@@ -249,26 +276,73 @@ class RepoAnalyzer:
             "edges": []
         }
         
-        # Add nodes for each file
-        for file_info in file_results:
-            graph["nodes"].append({
-                "id": file_info["path"],
-                "type": "file",
-                "name": Path(file_info["path"]).name,
-                "path": file_info["path"],
-                "size": file_info["size"]
-            })
+        # Add root node
+        graph["nodes"].append({
+            "id": "root",
+            "type": "folder",
+            "name": "root"
+        })
         
-        # Add edges for folder relationships
-        for file_info in file_results:
-            path = Path(file_info["path"])
-            if len(path.parts) > 1:
-                parent = str(path.parent)
+        # Add folder nodes and their relationships
+        def add_folder_to_graph(folder_path: str, folder_data: dict):
+            if folder_path != "root":
+                graph["nodes"].append({
+                    "id": folder_path,
+                    "type": "folder",
+                    "name": Path(folder_path).name
+                })
+                # Add edge from parent folder
+                parent = str(Path(folder_path).parent) if Path(folder_path).parent.name else "root"
                 graph["edges"].append({
                     "source": parent,
-                    "target": file_info["path"],
+                    "target": folder_path,
                     "type": "contains"
                 })
+            
+            # Process subfolders
+            for subfolder_name, subfolder_data in folder_data.get("folders", {}).items():
+                subfolder_path = f"{folder_path}/{subfolder_name}" if folder_path != "root" else subfolder_name
+                add_folder_to_graph(subfolder_path, subfolder_data)
+            
+            # Process files in this folder
+            for file_info in folder_data.get("files", []):
+                file_path = file_info["path"]
+                graph["nodes"].append({
+                    "id": file_path,
+                    "type": "file",
+                    "name": Path(file_path).name,
+                    "data": {
+                        "size": file_info["size"],
+                        "hash": file_info["hash"]
+                    }
+                })
+                graph["edges"].append({
+                    "source": folder_path if folder_path != "root" else "root",
+                    "target": file_path,
+                    "type": "contains"
+                })
+        
+        # Process root-level files
+        for file_info in structure["files"]:
+            file_path = file_info["path"]
+            graph["nodes"].append({
+                "id": file_path,
+                "type": "file",
+                "name": Path(file_path).name,
+                "data": {
+                    "size": file_info["size"],
+                    "hash": file_info["hash"]
+                }
+            })
+            graph["edges"].append({
+                "source": "root",
+                "target": file_path,
+                "type": "contains"
+            })
+        
+        # Process folders
+        for folder_name, folder_data in structure["folders"].items():
+            add_folder_to_graph(folder_name, folder_data)
         
         # Cache the results
         with open(cache_path, 'w') as f:

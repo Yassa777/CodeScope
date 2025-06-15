@@ -103,11 +103,92 @@ async def get_analysis_status(repo_id: str):
     return active_jobs[repo_id]
 
 @app.get("/api/repo/{repo_id}/graph")
-async def get_analysis_graph(repo_id: str):
+async def get_analysis_graph(repo_id: str, level: int = 1):
     """Get analysis graph data."""
     if repo_id not in active_jobs:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    return active_jobs[repo_id].get("graph", {})
+    
+    job = active_jobs[repo_id]
+    if not job.get("structure"):
+        raise HTTPException(status_code=404, detail="Analysis structure not found")
+    
+    # Build graph data
+    nodes = []
+    edges = []
+    
+    def process_folder(folder_path: str, folder_data: dict):
+        # Add folder node
+        folder_id = folder_path if folder_path else "root"
+        nodes.append({
+            "id": folder_id,
+            "type": "folder",
+            "name": folder_path.split("/")[-1] if folder_path else "root"
+        })
+        
+        # Process subfolders
+        for subfolder_name, subfolder_data in folder_data.get("folders", {}).items():
+            subfolder_path = f"{folder_path}/{subfolder_name}" if folder_path else subfolder_name
+            process_folder(subfolder_path, subfolder_data)
+            edges.append({
+                "source": folder_id,
+                "target": subfolder_path,
+                "type": "contains"
+            })
+        
+        # Process files
+        for file_info in folder_data.get("files", []):
+            file_path = file_info["path"]
+            file_name = file_path.split("/")[-1]
+            nodes.append({
+                "id": file_path,
+                "type": "file",
+                "name": file_name,
+                "data": {
+                    "size": file_info["size"],
+                    "hash": file_info["hash"]
+                }
+            })
+            edges.append({
+                "source": folder_id,
+                "target": file_path,
+                "type": "contains"
+            })
+    
+    # Process root folders
+    for folder_name, folder_data in job["structure"]["folders"].items():
+        process_folder(folder_name, folder_data)
+    
+    # Process root files
+    for file_info in job["structure"].get("files", []):
+        file_path = file_info["path"]
+        file_name = file_path.split("/")[-1]
+        nodes.append({
+            "id": file_path,
+            "type": "file",
+            "name": file_name,
+            "data": {
+                "size": file_info["size"],
+                "hash": file_info["hash"]
+            }
+        })
+        edges.append({
+            "source": "root",
+            "target": file_path,
+            "type": "contains"
+        })
+    
+    # Add root node if not already present
+    if not any(node["id"] == "root" for node in nodes):
+        nodes.append({
+            "id": "root",
+            "type": "folder",
+            "name": "root"
+        })
+    
+    return {
+        "nodes": nodes,
+        "edges": edges
+    }
 
 @app.websocket("/ws/repo/{repo_id}")
 async def websocket_endpoint(websocket: WebSocket, repo_id: str):
