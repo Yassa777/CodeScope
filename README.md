@@ -1,4 +1,4 @@
-# Halos - AI-Powered Code Knowledge Graph
+# CodeScope - AI-Powered Code Knowledge Graph
 
 Halos transforms static code repositories into living, explorable knowledge graphs. It helps developers understand complex codebases through interactive visualization and natural language queries.
 
