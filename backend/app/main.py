@@ -1,291 +1,162 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import httpx
 import asyncio
-import os
+import tempfile
 import shutil
-from datetime import datetime
-import logging
-from typing import Dict, Optional, List
-from .repo_analyzer import RepoAnalyzer
-from .graph_builder import GraphBuilder
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from pathlib import Path
+from .code_analyzer import CodeAnalyzer
 
 app = FastAPI()
 
-# Add CORS middleware with WebSocket support
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Frontend URL
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# Initialize analyzer and graph builder
-analyzer = RepoAnalyzer()
-graph_builder = GraphBuilder()
+# Initialize the code analyzer
+analyzer = CodeAnalyzer()
 
-# Store active analysis jobs and WebSocket connections
-active_jobs: Dict[str, dict] = {}
-active_websockets: Dict[str, List[WebSocket]] = {}
+class RepoTreeRequest(BaseModel):
+    repo_url: str
+    token: str = None
 
-class RepoRequest(BaseModel):
-    url: str
-    branch: str = "main"
+class RepoAnalysisRequest(BaseModel):
+    repo_url: str
+    token: str = None
 
-async def update_status(repo_id: str, status: dict):
-    """Update analysis status and notify WebSocket clients."""
-    try:
-        # Update job status
-        active_jobs[repo_id] = status
-        
-        # Notify all connected WebSocket clients
-        if repo_id in active_websockets:
-            disconnected_websockets = []
-            for ws in active_websockets[repo_id]:
-                try:
-                    await ws.send_json(status)
-                except WebSocketDisconnect:
-                    disconnected_websockets.append(ws)
-                except Exception as e:
-                    logger.error(f"Error sending status to WebSocket: {str(e)}")
-                    disconnected_websockets.append(ws)
-            
-            # Remove disconnected WebSockets
-            for ws in disconnected_websockets:
-                if ws in active_websockets[repo_id]:
-                    active_websockets[repo_id].remove(ws)
-            
-            # Clean up empty lists
-            if not active_websockets[repo_id]:
-                del active_websockets[repo_id]
-    except Exception as e:
-        logger.error(f"Error updating status: {str(e)}")
+# Helper to parse repo URL
+def parse_repo_url(url: str):
+    from urllib.parse import urlparse
+    u = urlparse(url)
+    if u.hostname != "github.com":
+        return None, None
+    parts = u.path.lstrip("/").split("/")
+    if len(parts) < 2:
+        return None, None
+    owner, repo = parts[:2]
+    return owner, repo.replace('.git', '')
 
-@app.post("/api/repo")
-async def analyze_repo(request: RepoRequest):
-    """Start repository analysis."""
-    try:
-        # Generate unique ID for this analysis
-        repo_id = analyzer.get_repo_id(request.url)
-        
-        # Check if analysis already exists
-        if repo_id in active_jobs:
-            return {"id": repo_id, "status": active_jobs[repo_id]}
-        
-        # Initialize analysis status
-        await update_status(repo_id, {
-            "status": "processing",
-            "progress": 0,
-            "error": None,
-            "message": "Starting analysis...",
-            "started_at": datetime.utcnow().isoformat()
-        })
-        
-        # Start analysis in background
-        asyncio.create_task(process_repo(repo_id, request.url, request.branch))
-        
-        return {"id": repo_id, "status": active_jobs[repo_id]}
-    except Exception as e:
-        logger.error(f"Error starting analysis: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/repo/{repo_id}")
-async def get_analysis_status(repo_id: str):
-    """Get analysis status."""
-    if repo_id not in active_jobs:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    return active_jobs[repo_id]
-
-@app.get("/api/repo/{repo_id}/graph")
-async def get_analysis_graph(repo_id: str, level: int = 1):
-    """Get analysis graph data."""
-    if repo_id not in active_jobs:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    
-    job = active_jobs[repo_id]
-    if not job.get("structure"):
-        raise HTTPException(status_code=404, detail="Analysis structure not found")
-    
-    # Build graph data
-    nodes = []
-    edges = []
-    
-    def process_folder(folder_path: str, folder_data: dict):
-        # Add folder node
-        folder_id = folder_path if folder_path else "root"
-        nodes.append({
-            "id": folder_id,
-            "type": "folder",
-            "name": folder_path.split("/")[-1] if folder_path else "root"
-        })
-        
-        # Process subfolders
-        for subfolder_name, subfolder_data in folder_data.get("folders", {}).items():
-            subfolder_path = f"{folder_path}/{subfolder_name}" if folder_path else subfolder_name
-            process_folder(subfolder_path, subfolder_data)
-            edges.append({
-                "source": folder_id,
-                "target": subfolder_path,
-                "type": "contains"
-            })
-        
-        # Process files
-        for file_info in folder_data.get("files", []):
-            file_path = file_info["path"]
-            file_name = file_path.split("/")[-1]
-            nodes.append({
-                "id": file_path,
-                "type": "file",
-                "name": file_name,
-                "data": {
-                    "size": file_info["size"],
-                    "hash": file_info["hash"]
+# Helper to build tree
+def build_tree(flat):
+    root = {}
+    for item in flat:
+        parts = item['path'].split('/')
+        current = root
+        for idx, part in enumerate(parts):
+            if part not in current:
+                current[part] = {
+                    'id': item['sha'] + '-' + str(idx),
+                    'name': part,
+                    'path': '/'.join(parts[:idx+1]),
+                    'type': item['type'] if idx == len(parts)-1 else 'tree',
+                    'children': {}
                 }
-            })
-            edges.append({
-                "source": folder_id,
-                "target": file_path,
-                "type": "contains"
-            })
-    
-    # Process root folders
-    for folder_name, folder_data in job["structure"]["folders"].items():
-        process_folder(folder_name, folder_data)
-    
-    # Process root files
-    for file_info in job["structure"].get("files", []):
-        file_path = file_info["path"]
-        file_name = file_path.split("/")[-1]
-        nodes.append({
-            "id": file_path,
-            "type": "file",
-            "name": file_name,
-            "data": {
-                "size": file_info["size"],
-                "hash": file_info["hash"]
-            }
-        })
-        edges.append({
-            "source": "root",
-            "target": file_path,
-            "type": "contains"
-        })
-    
-    # Add root node if not already present
-    if not any(node["id"] == "root" for node in nodes):
-        nodes.append({
-            "id": "root",
-            "type": "folder",
-            "name": "root"
-        })
-    
-    return {
-        "nodes": nodes,
-        "edges": edges
-    }
+            current = current[part]['children']
+    def object_to_array(obj):
+        return [
+            {**node, 'children': object_to_array(node['children']) if node['type'] == 'tree' else None}
+            for node in obj.values()
+        ]
+    return object_to_array(root)
 
-@app.websocket("/ws/repo/{repo_id}")
-async def websocket_endpoint(websocket: WebSocket, repo_id: str):
-    """WebSocket endpoint for real-time status updates."""
+async def clone_repository(repo_url: str, owner: str, repo: str) -> Path:
+    """Clone a repository to a temporary directory."""
+    import git
+    from git import Repo
+    
+    temp_dir = Path(tempfile.mkdtemp())
+    repo_path = temp_dir / repo
+    
     try:
-        await websocket.accept()
-        logger.info(f"WebSocket connection accepted for repo_id: {repo_id}")
-        
-        # Add WebSocket to active connections
-        if repo_id not in active_websockets:
-            active_websockets[repo_id] = []
-        active_websockets[repo_id].append(websocket)
-        
-        # Send initial status if available
-        if repo_id in active_jobs:
-            try:
-                await websocket.send_json(active_jobs[repo_id])
-            except Exception as e:
-                logger.error(f"Error sending initial status: {str(e)}")
-        
-        # Keep connection alive and handle disconnection
-        while True:
-            try:
-                # Wait for any message (we don't need to process it)
-                await websocket.receive_text()
-            except WebSocketDisconnect:
-                logger.info(f"WebSocket disconnected for repo_id: {repo_id}")
-                break
-            except Exception as e:
-                logger.error(f"WebSocket error: {str(e)}")
-                break
+        # Clone the repository
+        Repo.clone_from(repo_url, repo_path, depth=1)
+        return repo_path
     except Exception as e:
-        logger.error(f"Error in WebSocket connection: {str(e)}")
-    finally:
-        # Remove WebSocket from active connections
-        if repo_id in active_websockets and websocket in active_websockets[repo_id]:
-            active_websockets[repo_id].remove(websocket)
-            if not active_websockets[repo_id]:
-                del active_websockets[repo_id]
-        logger.info(f"WebSocket connection cleaned up for repo_id: {repo_id}")
+        # Clean up on error
+        if repo_path.exists():
+            shutil.rmtree(repo_path)
+        raise e
 
-async def process_repo(repo_id: str, repo_url: str, branch: str):
-    """Process repository analysis in background."""
+@app.post("/api/repo/tree")
+async def get_repo_tree(request: RepoTreeRequest):
+    """Get repository file tree from GitHub API."""
+    owner, repo = parse_repo_url(request.repo_url)
+    if not owner or not repo:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+    
+    headers = {"Accept": "application/vnd.github+json"}
+    if request.token:
+        headers["Authorization"] = f"Bearer {request.token}"
+    
+    async with httpx.AsyncClient() as client:
+        # 1. Get default branch
+        repo_resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
+        if repo_resp.status_code != 200:
+            raise HTTPException(status_code=repo_resp.status_code, detail=f"Failed to load repository: {repo_resp.text}")
+        repo_data = repo_resp.json()
+        branch = repo_data.get('default_branch', 'main')
+        
+        # 2. Get tree
+        tree_resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1", headers=headers)
+        if tree_resp.status_code != 200:
+            raise HTTPException(status_code=tree_resp.status_code, detail=f"Failed to load tree: {tree_resp.text}")
+        tree_data = tree_resp.json()
+        if tree_data.get('truncated'):
+            print("Warning: GitHub truncated the response – large repositories may need pagination or sub‑tree loading.")
+        tree = build_tree(tree_data['tree'])
+        return {"tree": tree}
+
+@app.post("/api/repo/analyze")
+async def analyze_repository(request: RepoAnalysisRequest):
+    """Analyze a repository using Tree-Sitter and generate code structure."""
+    owner, repo = parse_repo_url(request.repo_url)
+    if not owner or not repo:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+    
+    repo_url = f"https://github.com/{owner}/{repo}.git"
+    
     try:
-        # Initialize repo_path before try block
-        repo_path = None
+        # Clone the repository
+        repo_path = await clone_repository(repo_url, owner, repo)
         
-        # Update status to processing
-        await update_status(repo_id, {
-            "status": "processing",
-            "progress": 0,
-            "error": None,
-            "message": "Starting repository analysis..."
-        })
+        # Analyze the repository
+        analysis_result = await analyzer.analyze_repository(repo_path)
         
-        # Clone repository
-        repo_path = await analyzer.clone_repository(repo_url, branch)
+        # Clean up
+        if repo_path.exists():
+            shutil.rmtree(repo_path)
         
-        # Update status
-        await update_status(repo_id, {
-            "status": "processing",
-            "progress": 10,
-            "error": None,
-            "message": "Repository cloned successfully"
-        })
-        
-        # Analyze repository
-        structure, graph = await analyzer.analyze_repository(repo_path)
-        
-        # Update status to completed but keep in active_jobs
-        await update_status(repo_id, {
-            "status": "completed",
-            "progress": 100,
-            "error": None,
-            "message": "Analysis completed successfully",
-            "structure": structure,
-            "graph": graph,
-            "completed_at": datetime.utcnow().isoformat()
-        })
+        return analysis_result
         
     except Exception as e:
-        logger.error(f"Error processing repository {repo_id}: {str(e)}")
-        # Update status to error but keep in active_jobs
-        await update_status(repo_id, {
-            "status": "error",
-            "progress": 0,
-            "error": str(e),
-            "message": "Analysis failed"
-        })
-    finally:
-        # Clean up repository
-        if repo_path and os.path.exists(repo_path):
-            try:
-                shutil.rmtree(repo_path)
-                logger.info(f"Cleaned up repository directory: {repo_path}")
-            except Exception as e:
-                logger.error(f"Error cleaning up repository directory: {str(e)}")
+        # Clean up on error
+        if 'repo_path' in locals() and repo_path.exists():
+            shutil.rmtree(repo_path)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.get("/api/analysis/{analysis_id}")
+async def get_analysis(analysis_id: str):
+    """Get cached analysis results."""
+    # TODO: Implement caching and retrieval
+    raise HTTPException(status_code=404, detail="Analysis not found")
+
+@app.get("/api/analysis/{analysis_id}/modules")
+async def get_modules(analysis_id: str):
+    """Get module structure for an analysis."""
+    # TODO: Implement module retrieval
+    raise HTTPException(status_code=404, detail="Analysis not found")
+
+@app.get("/api/analysis/{analysis_id}/files/{file_path:path}")
+async def get_file_details(analysis_id: str, file_path: str):
+    """Get detailed file analysis."""
+    # TODO: Implement file detail retrieval
+    raise HTTPException(status_code=404, detail="File not found")
 
 if __name__ == "__main__":
     import uvicorn

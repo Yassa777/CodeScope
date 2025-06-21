@@ -165,4 +165,59 @@ class CodeParser:
             if child.type in ['import_path', 'source']:
                 import_path = source_code[child.start_byte:child.end_byte].decode('utf-8')
                 imports.append(import_path)
+        return imports
+
+    def extract_imports(self, file_path: Path) -> List[str]:
+        """
+        Parse a source file and extract its import statements.
+        
+        Args:
+            file_path: Path to the source file
+            
+        Returns:
+            List of imported module specifiers
+        """
+        parser = self._get_parser_for_file(file_path)
+        if not parser:
+            return []
+
+        with open(file_path, 'rb') as f:
+            source_code = f.read()
+
+        tree = parser.parse(source_code)
+        
+        # Define tree-sitter queries for imports
+        # Javascript/Typescript query
+        ts_query = """
+        (import_statement source: (string) @path)
+        (call_expression function: (identifier) @func (#eq? @func "require")
+                         arguments: (arguments (string) @path))
+        """
+        # Python query
+        py_query = """
+        (import_statement name: (dotted_name) @path)
+        (import_from_statement module_name: (dotted_name) @path)
+        """
+        
+        # Select query based on language
+        lang = self._get_parser_for_file(file_path).language
+        query_str = ""
+        if 'typescript' in str(lang.name):
+            query_str = ts_query
+        elif 'python' in str(lang.name):
+            query_str = py_query
+        
+        if not query_str:
+            return []
+            
+        # Execute the query
+        query = lang.query(query_str)
+        captures = query.captures(tree.root_node)
+        
+        imports = []
+        for node, _ in captures:
+            # Get the text of the captured node (the import path)
+            import_path = node.text.decode('utf8').strip("'\"")
+            imports.append(import_path)
+            
         return imports 
