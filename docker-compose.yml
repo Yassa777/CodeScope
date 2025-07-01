@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: halos-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  memgraph:
+    image: memgraph/memgraph-platform:latest
+    container_name: halos-memgraph
+    ports:
+      - "7687:7687"   # Bolt port
+      - "7444:7444"   # HTTP port
+      - "3000:3000"   # Lab interface
+    volumes:
+      - ./memgraph_data:/var/lib/memgraph
+      - ./memgraph_log:/var/log/memgraph
+      - ./memgraph_etc:/etc/memgraph
+    environment:
+      - MEMGRAPH="--log-level=TRACE"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7687"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  halos-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+    driver: local
+  memgraph_data:
+    driver: local
+  memgraph_log:
+    driver: local
+  memgraph_etc:
+    driver: local 

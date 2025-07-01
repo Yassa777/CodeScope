@@ -1,10 +1,502 @@
-venv/
-__pycache__/
-*.pyc
-node_modules/
+# Halos - Code Analysis & Visualization
+# Comprehensive .gitignore for Python + Node.js + External Services
+
+# ============================================================================
+# SENSITIVE DATA & CREDENTIALS (CRITICAL - NEVER COMMIT)
+# ============================================================================
+
+# Environment files with API keys and secrets
 .env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# API Keys and credentials (backup protection)
+*api_key*
+*secret*
+*password*
+*credentials*
+*.pem
+*.key
+*.crt
+
+# ============================================================================
+# PYTHON BACKEND
+# ============================================================================
+
+# Virtual environments
+venv/
+env/
+ENV/
+backend/venv/
+backend/env/
+.venv/
+.virtualenv/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# PyCharm
+.idea/
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ============================================================================
+# NODE.JS FRONTEND
+# ============================================================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+storybook-static
+
+# Temporary folders
+tmp/
+temp/
+
+# ============================================================================
+# HALOS-SPECIFIC DATA & CACHES
+# ============================================================================
+
+# Code analysis caches
+/tmp/halos_code_cache/
+halos_code_cache/
+cache/
+.cache/
+
+# Index files (regeneratable)
+lexical_index/
+vector_index/
+*.idx
+*.index
+
+# External service data (should be in cloud)
+qdrant_storage/
+memgraph_data/
+memgraph_log/
+memgraph_etc/
+
+# Analysis results (large, regeneratable)
+analysis_results/
+*.analysis
+*.chunks
+*.embeddings
+
+# Tree-sitter compiled languages
+*.so
+*.dylib
+*.dll
+tree_sitter_*/
+
+# Test outputs
+test_results/
+test_outputs/
+*.test.json
+
+# ============================================================================
+# DOCKER & CONTAINERS
+# ============================================================================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# Container data volumes
+volumes/
+data/
+
+# ============================================================================
+# SYSTEM & EDITOR FILES
+# ============================================================================
+
+# macOS
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Temporary Items
+.netrwhist
+*~
+tags
+[._]*.un~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ============================================================================
+# LOGS & DEBUGGING
+# ============================================================================
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime logs
+*.log.*
+*.out
+*.err
+
+# Debug files
+debug/
+*.debug
+*.trace
+
+# ============================================================================
+# TEMPORARY & BACKUP FILES
+# ============================================================================
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.#*
+#*#
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# Patch files
+*.patch
+*.diff
+*.rej
+
+# Archive files (unless specifically needed)
+*.zip
+*.tar.gz
+*.tgz
+*.tar
+*.rar
+*.7z
+
+# ============================================================================
+# LARGE BINARY FILES (Use Git LFS if needed)
+# ============================================================================
+
+# Large datasets
+*.csv
+*.json
+*.xml
+# Add specific exceptions as needed:
+# !small-config.json
+# !package.json
+# !tsconfig.json
+
+# Binary executables
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Media files (unless needed for UI)
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+# Add specific exceptions:
+# !src/assets/*.png
+# !public/*.svg
+
+# ============================================================================
+# CI/CD & DEPLOYMENT (if using)
+# ============================================================================
+
+# GitHub Actions
+.github/workflows/*.yml
+# Uncomment if you want to include CI:
+# !.github/workflows/main.yml
+
+# Docker deployment files
+docker-compose.prod.yml
+docker-compose.staging.yml
+Dockerfile.prod
+
+# Kubernetes
+*.k8s.yml
+*.kube.yml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# ============================================================================
+# IDE & TOOL CONFIGURATIONS (Optional)
+# ============================================================================
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ============================================================================
+# CUSTOM PROJECT EXCLUSIONS
+# ============================================================================
+
+# Add any project-specific files to ignore here
+# Example:
+# custom_scripts/
+# internal_docs/
+# client_data/
