@@ -114,7 +114,8 @@ class CodeAnalyzer:
                  cache_dir: str = None,
                  enable_lexical_index: bool = True,
                  enable_vector_index: bool = False,  # Disabled by default since we don't have Qdrant running
-                 enable_dependency_graph: bool = False):  # Disabled by default since we don't have Memgraph running
+                 enable_dependency_graph: bool = False,  # Disabled by default since we don't have Memgraph running
+                 enable_hierarchical_summarization: bool = True):  # Enable hierarchical summarization by default
         """Initialize the code analyzer with Tree-Sitter support."""
         self.cache_dir = cache_dir or os.path.join(tempfile.gettempdir(), "halos_code_cache")
         self.summary_cache_dir = os.path.join(self.cache_dir, "summaries")
@@ -156,6 +157,16 @@ class CodeAnalyzer:
                 print("✅ Dependency graph builder initialized successfully")
             except Exception as e:
                 print(f"❌ Could not initialize dependency graph builder: {e}")
+        
+        # Initialize hierarchical summarizer
+        self.hierarchical_summarizer = None
+        if enable_hierarchical_summarization:
+            try:
+                from .hierarchical_summarizer import HierarchicalSummarizer
+                self.hierarchical_summarizer = HierarchicalSummarizer(cache_dir=self.cache_dir)
+                print("✅ Hierarchical summarizer initialized successfully")
+            except Exception as e:
+                print(f"❌ Could not initialize hierarchical summarizer: {e}")
         
         # File patterns to ignore
         self.ignore_patterns = {
@@ -458,12 +469,31 @@ class CodeAnalyzer:
         # Build dependency graph if builder is available
         dependency_graph = None
         dependency_graph_success = False
+        centrality_metrics = {}
         if self.dependency_graph_builder and all_chunks:
             print("Building dependency graph...")
             dependency_graph = self.dependency_graph_builder.build_dependency_graph(all_chunks, str(repo_path))
             dependency_graph_success = dependency_graph is not None
             if dependency_graph_success:
                 print(f"Dependency graph: {dependency_graph.number_of_nodes()} nodes, {dependency_graph.number_of_edges()} edges")
+                centrality_metrics = self.dependency_graph_builder.compute_centrality_metrics()
+        
+        # Generate hierarchical summary if summarizer is available and API key is configured
+        hierarchical_summary = None
+        hierarchical_summary_success = False
+        if self.hierarchical_summarizer and all_chunks and self.hierarchical_summarizer.openai_api_key:
+            print("🏗️ Generating hierarchical summary...")
+            try:
+                hierarchical_summary = await self.hierarchical_summarizer.generate_hierarchical_summary(
+                    all_chunks, 
+                    centrality_metrics
+                )
+                hierarchical_summary_success = True
+                print("✅ Hierarchical summary generated successfully")
+            except Exception as e:
+                print(f"❌ Failed to generate hierarchical summary: {e}")
+        elif self.hierarchical_summarizer and all_chunks and not self.hierarchical_summarizer.openai_api_key:
+            print("⚠️ Hierarchical summarization skipped: OpenAI API key not configured")
         
         # Group chunks by file
         chunks_by_file = {}
@@ -489,12 +519,7 @@ class CodeAnalyzer:
         # Create module structure
         modules = self._create_module_structure(file_summaries, str(repo_path))
         
-        # Get centrality metrics if dependency graph is available
-        centrality_metrics = {}
-        if dependency_graph_success and self.dependency_graph_builder:
-            centrality_metrics = self.dependency_graph_builder.compute_centrality_metrics()
-        
-        return {
+        result = {
             "repository": str(repo_path),
             "total_files": len(source_files),
             "total_chunks": len(all_chunks),
@@ -503,8 +528,15 @@ class CodeAnalyzer:
             "lexical_index_available": self.lexical_indexer is not None,
             "vector_index_available": self.vector_indexer is not None and vector_index_success,
             "dependency_graph_available": self.dependency_graph_builder is not None and dependency_graph_success,
+            "hierarchical_summary_available": self.hierarchical_summarizer is not None and hierarchical_summary_success,
             "centrality_metrics": centrality_metrics
         }
+        
+        # Add hierarchical summary if available
+        if hierarchical_summary:
+            result["hierarchical_summary"] = hierarchical_summary
+        
+        return result
 
     def _create_module_structure(self, file_summaries: List[FileSummary], repo_path: str) -> List[ModuleSummary]:
         """Create a hierarchical module structure from file summaries."""

@@ -651,6 +651,31 @@ class DependencyGraphBuilder:
         
         return metrics
     
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics about the dependency graph (for frontend compatibility)."""
+        if not self.graph:
+            return {
+                "nodes": 0,
+                "edges": 0,
+                "last_updated": "Never",
+                "status": "Not built"
+            }
+        
+        try:
+            return {
+                "nodes": self.graph.number_of_nodes(),
+                "edges": self.graph.number_of_edges(),
+                "last_updated": "Recently",
+                "status": "Active" if self.mg_client else "Local only"
+            }
+        except Exception as e:
+            return {
+                "nodes": 0,
+                "edges": 0,
+                "last_updated": "Error",
+                "status": f"Error: {str(e)}"
+            }
+    
     def close(self):
         """Close Memgraph connection."""
         if self.mg_client:

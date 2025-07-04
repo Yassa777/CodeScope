@@ -554,6 +554,33 @@ class VectorIndexer:
         except Exception as e:
             return {"error": f"Could not get collection stats: {e}"}
     
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics about the vector index (for frontend compatibility)."""
+        if not self.qdrant_client:
+            return {
+                "collection_exists": False,
+                "points_count": 0,
+                "vectors_size_mb": 0,
+                "status": "Qdrant not available"
+            }
+        
+        try:
+            collection_info = self.qdrant_client.get_collection(self.collection_name)
+            
+            return {
+                "collection_exists": True,
+                "points_count": collection_info.points_count or 0,
+                "vectors_size_mb": 0,  # Qdrant doesn't easily expose size info
+                "status": "Active"
+            }
+        except Exception as e:
+            return {
+                "collection_exists": False,
+                "points_count": 0,
+                "vectors_size_mb": 0,
+                "status": f"Error: {str(e)}"
+            }
+    
     async def clear_collection(self) -> bool:
         """Clear all vectors from the collection."""
         if not self.qdrant_client:

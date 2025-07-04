@@ -1,34 +1,31 @@
-# 🌟 Halos - AI-Powered Code Analysis & Visualization
+# 🧠 SCOUT
+## AI-Native Operational Intelligence for Engineering Teams
 
-**Transform any codebase into an intelligent, queryable knowledge graph with semantic understanding and execution flow analysis.**
-
-Halos combines **AST parsing**, **lexical search**, **vector embeddings**, and **graph databases** to provide unprecedented insight into code relationships through AI-powered analysis.
+**Scout** is an AI-powered operational intelligence layer that synthesizes GitHub and Asana activity with deep codebase knowledge to generate real-time insights and weekly narratives for engineering teams.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-API-green.svg)](https://openai.com/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-red.svg)](https://qdrant.tech/)
 
-## 🚀 Key Features
+## ✨ Key Features
 
-### 🧠 Multi-Modal Intelligence
-- **🌳 AST Parsing**: Tree-sitter for deep syntactic understanding
-- **📊 Lexical Search**: BM25 + exact matching for fast text queries
-- **🎯 Semantic Search**: OpenAI embeddings for code meaning & relationships
-- **🔄 Hybrid Search**: Intelligently combines all approaches for optimal results
-- **🕸️ Dependency Graphs**: Memgraph for architectural analysis
+### 🔍 **Intelligent Code Analysis**
+- **AST-Aware Parsing**: Full repository parsing with Abstract Syntax Tree analysis
+- **Hybrid Search**: Combines lexical (BM25), semantic (vector), and graph-based search
+- **Multi-Language Support**: Python, JavaScript, TypeScript with more languages planned
 
-### 🎪 Execution Flow Analysis
-- **🚪 Entry Point Detection**: Auto-identify main functions, routes, CLI interfaces
-- **🔍 Flow Tracing**: Semantic similarity + call graph analysis
-- **💬 Natural Queries**: Ask questions about code behavior in plain English
-- **📈 Impact Analysis**: Understand how changes propagate through the system
+### 📊 **Operational Intelligence**
+- **GitHub Integration**: Webhooks for push events, PR activity, and review tracking
+- **Asana Integration**: Task management and project progress monitoring  
+- **Event Bus**: Unified timeline of all development activity
+- **Real-Time Alerts**: Rule-based alerting for critical situations
 
-### 🔎 Advanced Search Capabilities
-- **🔗 Symbol Search**: Find all references to functions, classes, variables
-- **🎭 Similarity Search**: Discover patterns, duplicates, and alternatives
-- **🎛️ Filtered Search**: Query by language, type, complexity, etc.
-- **📁 File Exploration**: Deep-dive into specific files with full context
+### 🧠 **AI-Powered Insights**
+- **Weekly Narratives**: Automated analyst-style reports every Monday
+- **Context-Aware Analysis**: LLM function calls with codebase knowledge
+- **Progress Tracking**: Goals vs. delivery with risk identification
+- **Team Intelligence**: Velocity, CI health, and collaboration metrics
 
 ## 🏗️ Architecture
 
@@ -125,7 +122,7 @@ curl -X POST http://localhost:8000/search/semantic \
 ### Environment Variables
 ```bash
 # OpenAI Configuration (Required for semantic features)
-OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_API_KEY=sk-your-openai-api-key
 EMBEDDING_MODEL=text-embedding-3-small
 
 # Qdrant Vector Database

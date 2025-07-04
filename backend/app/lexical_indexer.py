@@ -319,6 +319,44 @@ class LexicalIndexer:
                 'schema_fields': list(self.ix.schema.names()),
             }
     
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics about the lexical index (for frontend compatibility)."""
+        if not self.ix:
+            return {
+                "document_count": 0,
+                "last_updated": "Never",
+                "index_size_mb": 0,
+                "status": "Not initialized"
+            }
+        
+        try:
+            with self.ix.searcher() as searcher:
+                doc_count = searcher.doc_count()
+                
+            # Try to get index size (approximate)
+            import os
+            index_size = 0
+            if os.path.exists(self.index_dir):
+                for root, dirs, files in os.walk(self.index_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        if os.path.exists(file_path):
+                            index_size += os.path.getsize(file_path)
+            
+            return {
+                "document_count": doc_count,
+                "last_updated": "Recently",
+                "index_size_mb": round(index_size / (1024 * 1024), 2),
+                "status": "Active"
+            }
+        except Exception as e:
+            return {
+                "document_count": 0,
+                "last_updated": "Error", 
+                "index_size_mb": 0,
+                "status": f"Error: {str(e)}"
+            }
+    
     def clear_index(self) -> None:
         """Clear the entire index."""
         if self.ix:
